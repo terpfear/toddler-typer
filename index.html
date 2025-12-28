@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toddler Typer</title>
+    <style>
+        :root {
+            --primary-bg: #f0f8ff; /* AliceBlue */
+            --accent-color: #ff6b6b; /* Pastel Red */
+            --text-color: #2d3436;
+            --history-bg: #dfe6e9;
+            --font-main: 'Comic Sans MS', 'Chalkboard SE', sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: var(--primary-bg);
+            font-family: var(--font-main);
+            overflow: hidden;
+            user-select: none; /* Prevents text selection highlighting */
+        }
+
+        #main-stage {
+            flex: 2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 25vw;
+            font-weight: bold;
+            color: var(--accent-color);
+            text-shadow: 4px 4px 0px rgba(0,0,0,0.1);
+            transition: transform 0.1s ease;
+        }
+
+        .pop {
+            transform: scale(1.2);
+        }
+
+        #buffer-display {
+            flex: 0 0 80px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 3rem;
+            background-color: white;
+            border-top: 4px solid var(--accent-color);
+            border-bottom: 4px solid var(--accent-color);
+            color: var(--text-color);
+            letter-spacing: 5px;
+        }
+
+        #history-container {
+            flex: 1;
+            background-color: var(--history-bg);
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column-reverse;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .history-item {
+            font-size: 1.5rem;
+            color: #636e72;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            animation: slideIn 0.3s ease-out;
+            max-width: 90%;
+            word-wrap: break-word;
+            
+            /* --- UPDATE: Make it look clickable --- */
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        /* --- UPDATE: Hover effect for interactivity --- */
+        .history-item:hover {
+            background-color: #ffeaa7; /* Pastel yellow highlight */
+            transform: scale(1.02);
+        }
+
+        /* --- UPDATE: Active click effect --- */
+        .history-item:active {
+            transform: scale(0.95);
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #mobile-hint {
+            display: none;
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+            #mobile-hint { display: block; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="main-stage">Start!</div>
+    <div id="buffer-display"></div>
+    <div id="history-container"></div>
+    <input type="text" id="hidden-input" style="opacity: 0; position: absolute; top: -1000px;">
+    <div id="mobile-hint">Tap screen to type</div>
+
+<script>
+    // --- Configuration ---
+    const BUFFER_LIMIT = 255;
+    const SPEECH_RATE = 0.5;
+    const SPEECH_PITCH = 2.1;
+
+    // --- State ---
+    let buffer = "";
+    
+    // --- Elements ---
+    const stage = document.getElementById('main-stage');
+    const bufferDisplay = document.getElementById('buffer-display');
+    const historyContainer = document.getElementById('history-container');
+    const hiddenInput = document.getElementById('hidden-input');
+    const synth = window.speechSynthesis;
+
+    function speak(text) {
+        if (synth.speaking) {
+            synth.cancel();
+        }
+        const utterThis = new SpeechSynthesisUtterance(text);
+        utterThis.rate = SPEECH_RATE;
+        utterThis.pitch = SPEECH_PITCH;
+        utterThis.lang = 'en-US';
+        synth.speak(utterThis);
+    }
+
+    function updateDisplay(char) {
+        stage.textContent = char;
+        stage.classList.remove('pop');
+        void stage.offsetWidth; 
+        stage.classList.add('pop');
+        speak(char);
+    }
+
+    function updateBufferDisplay() {
+        bufferDisplay.textContent = buffer;
+    }
+
+    function saveToHistory() {
+        if (buffer.trim() === "") return;
+
+        const item = document.createElement('div');
+        item.classList.add('history-item');
+        item.textContent = buffer;
+
+        // --- UPDATE: Click to Speak Listener ---
+        item.addEventListener('click', () => {
+            speak(item.textContent);
+        });
+        
+        historyContainer.prepend(item);
+        
+        speak(buffer);
+
+        buffer = "";
+        updateBufferDisplay();
+        stage.textContent = "Enter!";
+    }
+
+    function handleInput(key) {
+        if (key === "Backspace") {
+            buffer = buffer.slice(0, -1);
+            updateBufferDisplay();
+            stage.textContent = "Del";
+            return;
+        }
+
+        if (key === "Enter") {
+            saveToHistory();
+            return;
+        }
+
+        if (key.length === 1) {
+            if (buffer.length >= BUFFER_LIMIT) return;
+
+	    key = key.toUpperCase();
+            buffer += key;
+            updateDisplay(key);
+            updateBufferDisplay();
+        }
+    }
+
+    // --- Event Listeners ---
+    document.addEventListener('keydown', (e) => {
+
+        if (e.isComposing || e.key === 'Process' || e.key === 'Unidentified') {
+            return; 
+        }
+
+        let handled = false;
+        if(e.key === "Backspace") {
+            handleInput("Backspace");
+	    handled = true;
+        } else if (e.key === "Enter") {
+            handleInput("Enter");
+            handled = true;
+        } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            handleInput(e.key);
+            handled = true;
+        }
+
+
+	if (handled) {
+            e.preventDefault();
+        }
+
+        hiddenInput.focus();
+    });
+
+    document.body.addEventListener('click', (e) => {
+        // Only focus hidden input if we didn't click a history item
+        if (!e.target.classList.contains('history-item')) {
+            hiddenInput.focus();
+        }
+    });
+
+     // Handle soft keyboard input (Android/iOS)
+    hiddenInput.addEventListener('input', (e) => {
+        if (e.data) {
+            // Get the last character typed
+            const char = e.data.slice(-1); 
+            handleInput(char);
+        } else if (e.inputType === 'deleteContentBackward') {
+            handleInput("Backspace");
+        }
+        // Reset input so we don't get stuck with old text
+        hiddenInput.value = ""; 
+    });
+   
+
+</script>
+</body>
+</html>
